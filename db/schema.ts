@@ -1,12 +1,16 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 export const schoolUsers = sqliteTable("school_users", {
   id: integer("id").primaryKey({ autoIncrement: true }), email: text("email").unique(), username: text("username").unique(),
   fullName: text("full_name").notNull(), role: text("role", { enum: ["admin", "teacher", "student"] }).notNull(),
   className: text("class_name"), createdAt: text("created_at").notNull(), passwordHash:text("password_hash"),passwordSalt:text("password_salt"),mustChangePassword:integer("must_change_password").notNull().default(1),
 });
 export const schoolSessions=sqliteTable("school_sessions",{tokenHash:text("token_hash").primaryKey(),userId:integer("user_id").notNull(),expiresAt:text("expires_at").notNull(),createdAt:text("created_at").notNull()});
+export const authLoginAttempts=sqliteTable("auth_login_attempts",{username:text("username").primaryKey(),failures:integer("failures").notNull().default(0),blockedUntil:text("blocked_until"),updatedAt:text("updated_at").notNull()});
 export const schoolClasses=sqliteTable("school_classes",{id:integer("id").primaryKey({autoIncrement:true}),name:text("name").notNull().unique()});
 export const schoolSubjects=sqliteTable("school_subjects",{id:integer("id").primaryKey({autoIncrement:true}),name:text("name").notNull().unique()});
 export const teachingAssignments=sqliteTable("teaching_assignments",{id:integer("id").primaryKey({autoIncrement:true}),teacherId:integer("teacher_id").notNull(),classId:integer("class_id").notNull(),subjectId:integer("subject_id").notNull()});
 export const grades=sqliteTable("grades",{id:integer("id").primaryKey({autoIncrement:true}),studentId:integer("student_id").notNull(),assignmentId:integer("assignment_id").notNull(),value:integer("value").notNull(),createdAt:text("created_at").notNull()});
 export const scheduleLessons=sqliteTable("schedule_lessons",{id:integer("id").primaryKey({autoIncrement:true}),day:integer("day").notNull(),startTime:text("start_time").notNull(),endTime:text("end_time").notNull(),classId:integer("class_id").notNull(),subjectId:integer("subject_id").notNull(),teacherId:integer("teacher_id").notNull(),room:text("room").notNull()});
+export const chats=sqliteTable("chats",{id:integer("id").primaryKey({autoIncrement:true}),type:text("type",{enum:["direct","class","support"]}).notNull(),title:text("title").notNull(),classId:integer("class_id"),createdBy:integer("created_by").notNull(),createdAt:text("created_at").notNull(),updatedAt:text("updated_at").notNull()},t=>[index("chats_class_id_idx").on(t.classId)]);
+export const chatMembers=sqliteTable("chat_members",{chatId:integer("chat_id").notNull(),userId:integer("user_id").notNull(),role:text("role",{enum:["member","owner"]}).notNull(),joinedAt:text("joined_at").notNull()},t=>[primaryKey({columns:[t.chatId,t.userId]}),index("chat_members_user_id_idx").on(t.userId),index("chat_members_chat_id_idx").on(t.chatId)]);
+export const messages=sqliteTable("messages",{id:integer("id").primaryKey({autoIncrement:true}),chatId:integer("chat_id").notNull(),senderId:integer("sender_id").notNull(),body:text("body").notNull(),createdAt:text("created_at").notNull(),editedAt:text("edited_at"),deletedAt:text("deleted_at")},t=>[index("messages_chat_created_idx").on(t.chatId,t.createdAt)]);
