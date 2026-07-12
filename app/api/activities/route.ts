@@ -21,7 +21,8 @@ async function payload(u:any){
   if(u.role==="admin"){
     const students=(await env.DB.prepare("SELECT u.id,u.full_name fullName,u.class_name className,COALESCE(w.balance,0) balance FROM school_users u LEFT JOIN coin_wallets w ON w.user_id=u.id WHERE u.role='student' ORDER BY u.full_name").all()).results;
     const orders=(await env.DB.prepare("SELECT o.id,o.status,o.price,i.name itemName,u.full_name studentName FROM shop_orders o JOIN shop_items i ON i.id=o.item_id JOIN school_users u ON u.id=o.student_id ORDER BY o.id DESC").all()).results;
-    return {balance:wallet?.balance??0,items,tests,students,orders};
+    const results=(await env.DB.prepare("SELECT aa.id,aa.assessment_id assessmentId,aa.score,aa.total,aa.reward,aa.created_at createdAt,u.full_name studentName,u.class_name className FROM assessment_attempts aa JOIN school_users u ON u.id=aa.student_id ORDER BY aa.id DESC").all()).results;
+    return {balance:wallet?.balance??0,items,tests,students,orders,results};
   }
   const attempts=(await env.DB.prepare("SELECT assessment_id assessmentId,score,total,reward FROM assessment_attempts WHERE student_id=?").bind(u.id).all()).results;
   const history=(await env.DB.prepare("SELECT amount,reason,created_at createdAt FROM coin_history WHERE user_id=? ORDER BY id DESC LIMIT 20").bind(u.id).all()).results;
@@ -33,6 +34,10 @@ export async function POST(r:Request){await init();const u=await userFromRequest
     const questions=Array.isArray(b.questions)?b.questions:[];if(!b.title||!b.type||questions.length===0)return Response.json({error:"Заполните тест и добавьте вопросы"},{status:400});
     const result=await env.DB.prepare("INSERT INTO assessments(title,type,subject,class_name,reward,created_at) VALUES(?,?,?,?,?,?)").bind(String(b.title).trim(),String(b.type),String(b.subject||"").trim(),String(b.className||"").trim(),Math.max(0,Number(b.reward)||0),now()).run();const id=Number(result.meta.last_row_id);
     await env.DB.batch(questions.map((q:any)=>env.DB.prepare("INSERT INTO assessment_questions(assessment_id,question,options_json,correct_index) VALUES(?,?,?,?)").bind(id,String(q.question),JSON.stringify(q.options),Number(q.correctIndex))));return Response.json(await payload(u));
+  }
+  if(u.role==="admin"&&b.action==="deleteTest"){
+    const id=Number(b.testId);if(!id)return Response.json({error:"Испытание не найдено"},{status:400});
+    await env.DB.batch([env.DB.prepare("DELETE FROM assessment_attempts WHERE assessment_id=?").bind(id),env.DB.prepare("DELETE FROM assessment_questions WHERE assessment_id=?").bind(id),env.DB.prepare("DELETE FROM assessments WHERE id=?").bind(id)]);return Response.json(await payload(u));
   }
   if(u.role==="admin"&&b.action==="item"){await env.DB.prepare("INSERT INTO shop_items(name,description,price,stock) VALUES(?,?,?,?)").bind(String(b.name).trim(),String(b.description||"").trim(),Math.max(1,Number(b.price)),Math.max(0,Number(b.stock))).run();return Response.json(await payload(u));}
   if(u.role==="admin"&&b.action==="coins"){const id=Number(b.studentId),amount=Number(b.amount);await env.DB.prepare("INSERT OR IGNORE INTO coin_wallets(user_id,balance) VALUES(?,0)").bind(id).run();await env.DB.prepare("UPDATE coin_wallets SET balance=MAX(0,balance+?) WHERE user_id=?").bind(amount,id).run();await env.DB.prepare("INSERT INTO coin_history(user_id,amount,reason,created_at) VALUES(?,?,?,?)").bind(id,amount,String(b.reason||"Начисление администратора"),now()).run();return Response.json(await payload(u));}
