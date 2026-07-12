@@ -7,13 +7,15 @@ export async function GET(r:Request){
   await ensureAccountsTable();await ensureChatsTables();const u=await userFromRequest(r);
   if(!u)return Response.json({error:"Требуется вход"},{status:401});
   const chats=(await env.DB.prepare(`SELECT c.id,c.type,c.title,c.updated_at updatedAt,
-   (SELECT body FROM messages m WHERE m.chat_id=c.id AND m.deleted_at IS NULL ORDER BY m.id DESC LIMIT 1) lastMessage,
-   (SELECT created_at FROM messages m WHERE m.chat_id=c.id AND m.deleted_at IS NULL ORDER BY m.id DESC LIMIT 1) lastMessageAt
-   FROM chats c JOIN chat_members cm ON cm.chat_id=c.id WHERE cm.user_id=? ORDER BY c.updated_at DESC`).bind(u.id).all()).results;
+   (SELECT body || ' · ' || CASE WHEN date(created_at)=date('now') THEN substr(created_at,12,5) ELSE substr(created_at,9,2)||'.'||substr(created_at,6,2) END FROM messages m WHERE m.chat_id=c.id AND m.deleted_at IS NULL ORDER BY m.id DESC LIMIT 1) lastMessage,
+   (SELECT created_at FROM messages m WHERE m.chat_id=c.id AND m.deleted_at IS NULL ORDER BY m.id DESC LIMIT 1) lastMessageAt,
+   (SELECT COUNT(*) FROM messages m WHERE m.chat_id=c.id AND m.sender_id<>? AND m.deleted_at IS NULL AND (cm.last_read_at IS NULL OR m.created_at>cm.last_read_at)) unreadCount
+   FROM chats c JOIN chat_members cm ON cm.chat_id=c.id WHERE cm.user_id=? ORDER BY c.updated_at DESC`).bind(u.id,u.id).all()).results;
   let contacts:any[]=[];
   if(u.role==="admin")contacts=(await env.DB.prepare("SELECT id,full_name fullName,role,class_name className FROM school_users WHERE id<>? ORDER BY full_name").bind(u.id).all()).results;
   else if(u.role==="teacher")contacts=(await env.DB.prepare("SELECT id,full_name fullName,role,class_name className FROM school_users WHERE role='student' ORDER BY full_name").all()).results;
-  return Response.json({chats,contacts,canCreate:u.role!=="student"});
+  const totalUnread=chats.reduce((sum:any,chat:any)=>sum+Number(chat.unreadCount||0),0);
+  return Response.json({chats,contacts,canCreate:u.role!=="student",totalUnread});
  }catch{return chatError()}
 }
 
