@@ -10,6 +10,8 @@ export async function ensureChatsTables(){
   env.DB.prepare("CREATE INDEX IF NOT EXISTS chat_members_chat_id_idx ON chat_members(chat_id)"),
   env.DB.prepare("CREATE INDEX IF NOT EXISTS chats_class_id_idx ON chats(class_id)"),
  ]);
+ const columns=await env.DB.prepare("PRAGMA table_info(chat_members)").all<{name:string}>();
+ if(!columns.results.some(column=>column.name==="last_read_at"))await env.DB.prepare("ALTER TABLE chat_members ADD COLUMN last_read_at TEXT").run();
 }
 
 export async function isChatMember(chatId:number,userId:number){
