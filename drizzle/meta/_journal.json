@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1783791865664,
+      "tag": "0000_cold_living_tribunal",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1783792403713,
+      "tag": "0001_sharp_scalphunter",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1783796602678,
+      "tag": "0002_ambiguous_clea",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1783797185017,
+      "tag": "0003_omniscient_garia",
+      "breakpoints": true
+    }
+  ]
+}
