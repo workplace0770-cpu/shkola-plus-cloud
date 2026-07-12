@@ -22,7 +22,19 @@ export async function POST(r:Request){
   await ensureAccountsTable();await ensureChatsTables();const u=await userFromRequest(r);
   if(!u)return Response.json({error:"Требуется вход"},{status:401});
   if(u.role==="student")return Response.json({error:"Ученики могут отвечать только в существующих чатах"},{status:403});
-  const body=await r.json() as {targetUserId?:number},targetId=Number(body.targetUserId);
+  const body=await r.json() as {targetUserId?:number;type?:"direct"|"group";title?:string;memberIds?:number[]};
+  if(body.type==="group"){
+   if(u.role!=="admin")return Response.json({error:"Только администратор может создавать группы"},{status:403});
+   const title=String(body.title??"").trim(),memberIds=[...new Set((body.memberIds??[]).map(Number).filter(id=>Number.isInteger(id)&&id>0&&id!==u.id))];
+   if(title.length<2||title.length>80)return Response.json({error:"Название группы должно содержать от 2 до 80 символов"},{status:400});
+   if(memberIds.length<2||memberIds.length>100)return Response.json({error:"Выберите минимум двух участников"},{status:400});
+   const marks=memberIds.map(()=>"?").join(","),found=(await env.DB.prepare(`SELECT id FROM school_users WHERE id IN (${marks})`).bind(...memberIds).all()).results;
+   if(found.length!==memberIds.length)return Response.json({error:"Один из участников не найден"},{status:400});
+   const now=new Date().toISOString(),created=await env.DB.prepare("INSERT INTO chats(type,title,class_id,created_by,created_at,updated_at) VALUES('support',?,NULL,?,?,?)").bind(title,u.id,now,now).run(),id=Number(created.meta.last_row_id);
+   await env.DB.batch([env.DB.prepare("INSERT INTO chat_members(chat_id,user_id,role,joined_at) VALUES(?,?,'owner',?)").bind(id,u.id,now),...memberIds.map(memberId=>env.DB.prepare("INSERT INTO chat_members(chat_id,user_id,role,joined_at) VALUES(?,?,'member',?)").bind(id,memberId,now))]);
+   return Response.json({id},{status:201});
+  }
+  const targetId=Number(body.targetUserId);
   if(!targetId||targetId===u.id)return Response.json({error:"Выберите пользователя"},{status:400});
   const target=await env.DB.prepare("SELECT id,full_name fullName,role FROM school_users WHERE id=?").bind(targetId).first<{id:number;fullName:string;role:string}>();
   if(!target)return Response.json({error:"Пользователь не найден"},{status:404});
