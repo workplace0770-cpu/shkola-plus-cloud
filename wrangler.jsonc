@@ -5,6 +5,7 @@
   "compatibility_date": "2026-05-15",
   "compatibility_flags": ["nodejs_compat"],
   "no_bundle": true,
+"build": { "command": "npm run build" },
   "assets": { "directory": "dist/client" },
   "d1_databases": [
     {
