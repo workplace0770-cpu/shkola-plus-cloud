@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { ensureAccountsTable, userFromRequest } from "../../../../../db/accounts";
 import { chatError, ensureChatsTables, isChatMember } from "../../../../../db/chats";
+import {notify} from "../../../../../db/notifications";
 
 type Context={params:Promise<{id:string}>};
 async function chatId(context:Context){return Number((await context.params).id)}
@@ -25,6 +26,7 @@ export async function POST(r:Request,context:Context){
   const input=await r.json() as {body?:string},body=String(input.body||"").trim();
   if(body.length<1||body.length>2000)return Response.json({error:"Сообщение должно содержать от 1 до 2000 символов"},{status:400});
   const now=new Date().toISOString();await env.DB.batch([env.DB.prepare("INSERT INTO messages(chat_id,sender_id,body,created_at,edited_at,deleted_at) VALUES(?,?,?,?,NULL,NULL)").bind(id,u.id,body,now),env.DB.prepare("UPDATE chats SET updated_at=? WHERE id=?").bind(now,id),env.DB.prepare("UPDATE chat_members SET last_read_at=? WHERE chat_id=? AND user_id=?").bind(now,id,u.id)]);
+  const recipients=(await env.DB.prepare("SELECT user_id userId FROM chat_members WHERE chat_id=? AND user_id<>?").bind(id,u.id).all<{userId:number}>()).results;await Promise.all(recipients.map(x=>notify(x.userId,"message",`Новое сообщение от ${u.fullName}`,body.slice(0,160),`chat:${id}`)));
   return Response.json({ok:true},{status:201});
  }catch{return chatError()}
 }
