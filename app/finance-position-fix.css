@@ -1,0 +1,31 @@
+.finance-fab {
+  left: 25px;
+  right: auto;
+  top: 535px;
+  bottom: auto;
+  width: 255px;
+  justify-content: flex-start;
+  padding: 16px 20px;
+  background: #f0edff;
+  color: #6650e8;
+  box-shadow: none;
+  z-index: 48;
+}
+
+.finance-fab:hover {
+  transform: translateY(-1px);
+  background: #e9e4ff;
+  box-shadow: 0 12px 28px rgba(105, 78, 230, 0.14);
+}
+
+@media (max-width: 720px) {
+  .finance-fab {
+    left: 12px;
+    right: auto;
+    top: auto;
+    bottom: 82px;
+    width: auto;
+    padding: 14px 18px;
+    box-shadow: 0 16px 36px rgba(105, 78, 230, 0.24);
+  }
+}
