@@ -28,3 +28,28 @@ export async function POST(r:Request,context:Context){
   return Response.json({ok:true},{status:201});
  }catch{return chatError()}
 }
+
+export async function PATCH(r:Request,context:Context){
+ try{
+  await ensureAccountsTable();await ensureChatsTables();const u=await userFromRequest(r),id=await chatId(context);
+  if(!u)return Response.json({error:"Требуется вход"},{status:401});
+  if(!id||!await isChatMember(id,u.id))return Response.json({error:"Нет доступа"},{status:403});
+  const input=await r.json() as {messageId?:number;body?:string},messageId=Number(input.messageId),body=String(input.body||"").trim();
+  if(body.length<1||body.length>2000)return Response.json({error:"Сообщение должно содержать от 1 до 2000 символов"},{status:400});
+  const own=await env.DB.prepare("SELECT id FROM messages WHERE id=? AND chat_id=? AND sender_id=? AND deleted_at IS NULL").bind(messageId,id,u.id).first();
+  if(!own)return Response.json({error:"Можно изменить только своё сообщение"},{status:403});
+  await env.DB.prepare("UPDATE messages SET body=?,edited_at=? WHERE id=?").bind(body,new Date().toISOString(),messageId).run();return Response.json({ok:true});
+ }catch{return chatError()}
+}
+
+export async function DELETE(r:Request,context:Context){
+ try{
+  await ensureAccountsTable();await ensureChatsTables();const u=await userFromRequest(r),id=await chatId(context);
+  if(!u)return Response.json({error:"Требуется вход"},{status:401});
+  if(!id||!await isChatMember(id,u.id))return Response.json({error:"Нет доступа"},{status:403});
+  const {messageId}=await r.json() as {messageId?:number};
+  const own=await env.DB.prepare("SELECT id FROM messages WHERE id=? AND chat_id=? AND sender_id=? AND deleted_at IS NULL").bind(Number(messageId),id,u.id).first();
+  if(!own)return Response.json({error:"Можно удалить только своё сообщение"},{status:403});
+  await env.DB.prepare("UPDATE messages SET deleted_at=? WHERE id=?").bind(new Date().toISOString(),Number(messageId)).run();return Response.json({ok:true});
+ }catch{return chatError()}
+}
