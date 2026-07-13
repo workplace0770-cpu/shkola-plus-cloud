@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import type { SchoolUser } from "../db/accounts";
 import ModernChatPortal from "./ModernChatPortal";
 import NotificationCenter from "./NotificationCenter";
+import ProfilePortal from "./ProfilePortal";
 
 export default function App(){
   const [state,setState]=useState<{loading:boolean;setupNeeded?:boolean;profile?:SchoolUser|null}>({loading:true});
@@ -20,7 +21,7 @@ export default function App(){
   if(welcome)return <WelcomeScreen profile={welcome}/>;
   if(!state.profile){const setup=state.setupNeeded;return <main className="login-page"><div className="login-aurora login-aurora-one"/><div className="login-aurora login-aurora-two"/><form className="login-card login-form" onSubmit={e=>auth(e,setup?"setup":recover?"recover":"login")}><SchoolLoginBrand/><span className="login-kicker">ЕДИНАЯ ШКОЛЬНАЯ ПЛАТФОРМА</span><h1>{setup?"Создайте администратора":recover?"Восстановление администратора":"Войдите в свой кабинет"}</h1><p>{setup?"Придумайте логин и пароль главного администратора":recover?"Введите ключ восстановления владельца школы и задайте новый доступ.":"Используйте логин и пароль, выданные школой"}</p>{recover&&<label>Ключ восстановления<input name="recoveryKey" type="password" autoComplete="off" placeholder="Секретный ключ Cloudflare" required/></label>}<label>Логин<input name="username" autoComplete="username" placeholder={setup||recover?"admin":"Ваш логин"} required/></label><label>Пароль<div className="password-field"><input name="password" type={showPassword?"text":"password"} autoComplete={setup||recover?"new-password":"current-password"} placeholder={recover?"Не менее 10 символов":"Не менее 8 символов"} minLength={recover?10:8} required/><button type="button" aria-label={showPassword?"Скрыть пароль":"Показать пароль"} onClick={()=>setShowPassword(v=>!v)}>{showPassword?"Скрыть":"Показать"}</button></div></label>{error&&<b className="form-error" role="alert">⚠ {error}</b>}<button className="login-submit" disabled={authBusy}>{authBusy?<><i className="button-spinner"/>Проверяем…</>:<>{setup?"Создать администратора":recover?"Сохранить новый доступ":"Войти"}<b>→</b></>}</button>{!setup&&<button type="button" className="recover-link" disabled={authBusy} onClick={()=>{setRecover(!recover);setError("")}}>{recover?"Вернуться ко входу":"Не могу войти как администратор"}</button>}<div className="login-roles"><span>🎓 Ученик</span><span>📚 Учитель</span><span>⚙ Администратор</span></div><small>Аккаунты учеников и учителей создаёт администратор</small></form></main>}
   if(state.profile.mustChangePassword)return <main className="login-page"><form className="login-card login-form" onSubmit={change}><div className="login-logo locked">🔑</div><h1>Установите новый пароль</h1><p>Это ваш первый вход. Временный пароль нужно заменить.</p><label>Новый пароль<input name="password" type="password" minLength={8} required/></label><label>Повторите пароль<input name="confirm" type="password" minLength={8} required/></label>{error&&<b className="form-error">{error}</b>}<button className="login-submit">Сохранить пароль</button></form></main>;
-  return <>{state.profile.role==="admin"?<AdminPortalClean profile={state.profile}/>:<StudentDashboard profile={state.profile}/>}<AcademicPortal profile={state.profile}/><SchedulePortal profile={state.profile}/><ActivitiesPortalV2 profile={state.profile}/><ModernChatPortal profile={state.profile}/><ChatOpenButton/><DirectChatCreator profile={state.profile}/><GroupChatCreator profile={state.profile}/><UnreadChatCounter/><NotificationCenter/></>;
+  return <>{state.profile.role==="admin"?<AdminPortalClean profile={state.profile}/>:<StudentDashboard profile={state.profile}/>}<AcademicPortal profile={state.profile}/><SchedulePortal profile={state.profile}/><ActivitiesPortalV2 profile={state.profile}/><ModernChatPortal profile={state.profile}/><ProfilePortal profile={state.profile}/><ChatOpenButton/><DirectChatCreator profile={state.profile}/><GroupChatCreator profile={state.profile}/><UnreadChatCounter/><NotificationCenter/></>;
 }
 
 function SchoolLoginBrand(){return <div className="login-school-brand"><div className="login-school-logo"><img src="/uk-school-logo.jpg" alt="Логотип UK School of Tashkent"/></div><strong>UK School of Tashkent</strong><span>Tashkent · Since 2020</span></div>}
@@ -210,10 +211,10 @@ function StudentDashboard({profile}:{profile:SchoolUser}) {
           {nav.map(([icon, label]) => <button key={label} className={active === label ? "active" : ""} onClick={() => {setActive(label);if(label==="Сообщения")window.dispatchEvent(new Event("open-school-chat"))}}><i>{icon}</i>{label}</button>)}
         </nav>
         <div className="side-bottom">
-          <button><i>⚙</i>Настройки</button>
+          <button onClick={() => window.dispatchEvent(new Event("open-school-profile"))}><i>⚙</i>Мой профиль</button>
           <button><i>?</i>Помощь</button>
           <button className="account-logout" onClick={logout}><i>↪</i>Выйти из аккаунта</button>
-          <div className="profile"><div className="avatar">{profile.fullName.slice(0,2).toUpperCase()}</div><div><strong>{profile.fullName}</strong><span>{profile.role === "teacher" ? "Учитель" : `${profile.className ?? "Без класса"} класс`}</span></div><em>⋮</em></div>
+          <div className="profile" role="button" tabIndex={0} onClick={() => window.dispatchEvent(new Event("open-school-profile"))}><div className="avatar">{profile.fullName.slice(0,2).toUpperCase()}</div><div><strong>{profile.fullName}</strong><span>{profile.role === "teacher" ? "Учитель" : `${profile.className ?? "Без класса"} класс`}</span></div><em>⋮</em></div>
         </div>
       </aside>
 
