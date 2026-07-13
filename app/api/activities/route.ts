@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { ensureAccountsTable, userFromRequest } from "../../../db/accounts";
+import { notify } from "../../../db/notifications";
 
 async function init(){
   await ensureAccountsTable();
@@ -32,8 +33,13 @@ export async function GET(r:Request){await init();const u=await userFromRequest(
 export async function POST(r:Request){await init();const u=await userFromRequest(r);if(!u)return Response.json({error:"Нет доступа"},{status:401});const b=await r.json() as any;
   if(u.role==="admin"&&b.action==="test"){
     const questions=Array.isArray(b.questions)?b.questions:[];if(!b.title||!b.type||questions.length===0)return Response.json({error:"Заполните тест и добавьте вопросы"},{status:400});
-    const result=await env.DB.prepare("INSERT INTO assessments(title,type,subject,class_name,reward,created_at) VALUES(?,?,?,?,?,?)").bind(String(b.title).trim(),String(b.type),String(b.subject||"").trim(),String(b.className||"").trim(),Math.max(0,Number(b.reward)||0),now()).run();const id=Number(result.meta.last_row_id);
-    await env.DB.batch(questions.map((q:any)=>env.DB.prepare("INSERT INTO assessment_questions(assessment_id,question,options_json,correct_index) VALUES(?,?,?,?)").bind(id,String(q.question),JSON.stringify(q.options),Number(q.correctIndex))));return Response.json(await payload(u));
+    const title=String(b.title).trim(),type=String(b.type),subject=String(b.subject||"").trim(),className=String(b.className||"").trim(),reward=Math.max(0,Number(b.reward)||0);
+    const result=await env.DB.prepare("INSERT INTO assessments(title,type,subject,class_name,reward,created_at) VALUES(?,?,?,?,?,?)").bind(title,type,subject,className,reward,now()).run();const id=Number(result.meta.last_row_id);
+    await env.DB.batch(questions.map((q:any)=>env.DB.prepare("INSERT INTO assessment_questions(assessment_id,question,options_json,correct_index) VALUES(?,?,?,?)").bind(id,String(q.question),JSON.stringify(q.options),Number(q.correctIndex))));
+    const students=(await env.DB.prepare("SELECT id FROM school_users WHERE role='student' AND (?='' OR class_name=?)").bind(className,className).all<{id:number}>()).results;
+    const labels:Record<string,string>={olympiad:"Олимпиада",exam:"Экзамен",control:"Контрольная"};
+    await Promise.all(students.map(student=>notify(student.id,"assessment",`Новое испытание: ${labels[type]||"Испытание"}`,`${title} · ${subject}${reward?` · 🪙 ${reward}`:""}`,"tests")));
+    return Response.json(await payload(u));
   }
   if(u.role==="admin"&&b.action==="deleteTest"){
     const id=Number(b.testId);if(!id)return Response.json({error:"Испытание не найдено"},{status:400});
