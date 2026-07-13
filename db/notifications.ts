@@ -1,0 +1,3 @@
+import {env} from "cloudflare:workers";
+export async function ensureNotifications(){await env.DB.batch([env.DB.prepare("CREATE TABLE IF NOT EXISTS notifications(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,type TEXT NOT NULL,title TEXT NOT NULL,body TEXT NOT NULL,link TEXT,created_at TEXT NOT NULL,read_at TEXT)"),env.DB.prepare("CREATE INDEX IF NOT EXISTS notifications_user_created_idx ON notifications(user_id,created_at)")])}
+export async function notify(userId:number,type:string,title:string,body:string,link?:string){await ensureNotifications();await env.DB.prepare("INSERT INTO notifications(user_id,type,title,body,link,created_at,read_at) VALUES(?,?,?,?,?,?,NULL)").bind(userId,type,title,body,link||null,new Date().toISOString()).run()}
