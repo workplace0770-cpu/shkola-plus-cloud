@@ -1,0 +1,14 @@
+.finance-fab {
+  left: 570px;
+  right: auto;
+  bottom: 28px;
+  z-index: 48;
+}
+
+@media (max-width: 720px) {
+  .finance-fab {
+    left: 86px;
+    right: auto;
+    bottom: 82px;
+  }
+}
