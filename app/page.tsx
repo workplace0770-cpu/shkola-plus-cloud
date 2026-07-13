@@ -9,13 +9,31 @@ export default function App(){
   const [state,setState]=useState<{loading:boolean;setupNeeded?:boolean;profile?:SchoolUser|null}>({loading:true});
   const [error,setError]=useState("");
   const [recover,setRecover]=useState(false);
+  const [welcome,setWelcome]=useState<SchoolUser|null>(null);
   useEffect(()=>{fetch("/api/me").then(r=>r.json()).then(d=>setState({...d,loading:false})).catch(()=>setState({loading:false}))},[]);
-  async function auth(e:FormEvent<HTMLFormElement>,action:"setup"|"login"|"recover"){e.preventDefault();setError("");try{const f=new FormData(e.currentTarget),r=await fetch("/api/auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action,username:f.get("username"),password:f.get("password"),recoveryKey:f.get("recoveryKey")})}),d=await r.json();if(!r.ok)return setError(d.error||"Не удалось сохранить данные");setState({loading:false,profile:d.profile})}catch{setError("Нет связи с сервером. Обновите страницу и попробуйте снова.")}}
-  async function change(e:FormEvent<HTMLFormElement>){e.preventDefault();setError("");const f=new FormData(e.currentTarget);if(f.get("password")!==f.get("confirm"))return setError("Пароли не совпадают");const r=await fetch("/api/auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"change",newPassword:f.get("password")})}),d=await r.json();if(!r.ok)return setError(d.error);setState({loading:false,profile:d.profile})}
+  function enter(profile:SchoolUser){setState({loading:false,profile});if(!profile.mustChangePassword){setWelcome(profile);window.setTimeout(()=>setWelcome(null),3600)}}
+  async function auth(e:FormEvent<HTMLFormElement>,action:"setup"|"login"|"recover"){e.preventDefault();setError("");try{const f=new FormData(e.currentTarget),r=await fetch("/api/auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action,username:f.get("username"),password:f.get("password"),recoveryKey:f.get("recoveryKey")})}),d=await r.json();if(!r.ok)return setError(d.error||"Не удалось сохранить данные");enter(d.profile)}catch{setError("Нет связи с сервером. Обновите страницу и попробуйте снова.")}}
+  async function change(e:FormEvent<HTMLFormElement>){e.preventDefault();setError("");const f=new FormData(e.currentTarget);if(f.get("password")!==f.get("confirm"))return setError("Пароли не совпадают");const r=await fetch("/api/auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"change",newPassword:f.get("password")})}),d=await r.json();if(!r.ok)return setError(d.error);enter(d.profile)}
   if(state.loading)return <main className="login-page"><div className="login-card"><div className="login-logo">Ш</div><h1>Школа+</h1><div className="login-loader"/></div></main>;
+  if(welcome)return <WelcomeScreen profile={welcome}/>;
   if(!state.profile){const setup=state.setupNeeded;return <main className="login-page"><form className="login-card login-form" onSubmit={e=>auth(e,setup?"setup":recover?"recover":"login")}><div className="login-logo">Ш</div><span className="login-kicker">ЕДИНАЯ ШКОЛЬНАЯ ПЛАТФОРМА</span><h1>{setup?"Создайте администратора":recover?"Восстановление администратора":"Войдите в свой кабинет"}</h1><p>{setup?"Придумайте логин и пароль главного администратора":recover?"Введите ключ восстановления владельца школы и задайте новый доступ.":"Используйте логин и пароль, выданные школой"}</p>{recover&&<label>Ключ восстановления<input name="recoveryKey" type="password" autoComplete="off" placeholder="Секретный ключ Cloudflare" required/></label>}<label>Логин<input name="username" autoComplete="username" placeholder={setup||recover?"admin":"Ваш логин"} required/></label><label>Пароль<input name="password" type="password" autoComplete={setup||recover?"new-password":"current-password"} placeholder={recover?"Не менее 10 символов":"Не менее 8 символов"} minLength={recover?10:8} required/></label>{error&&<b className="form-error">{error}</b>}<button className="login-submit">{setup?"Создать администратора":recover?"Сохранить новый доступ":"Войти"} <b>→</b></button>{!setup&&<button type="button" className="recover-link" onClick={()=>{setRecover(!recover);setError("")}}>{recover?"Вернуться ко входу":"Не могу войти как администратор"}</button>}<div className="login-roles"><span>🎓 Ученик</span><span>📚 Учитель</span><span>⚙ Администратор</span></div><small>Аккаунты учеников и учителей создаёт администратор</small></form></main>}
   if(state.profile.mustChangePassword)return <main className="login-page"><form className="login-card login-form" onSubmit={change}><div className="login-logo locked">🔑</div><h1>Установите новый пароль</h1><p>Это ваш первый вход. Временный пароль нужно заменить.</p><label>Новый пароль<input name="password" type="password" minLength={8} required/></label><label>Повторите пароль<input name="confirm" type="password" minLength={8} required/></label>{error&&<b className="form-error">{error}</b>}<button className="login-submit">Сохранить пароль</button></form></main>;
   return <>{state.profile.role==="admin"?<AdminPortalClean profile={state.profile}/>:<StudentDashboard profile={state.profile}/>}<AcademicPortal profile={state.profile}/><SchedulePortal profile={state.profile}/><ActivitiesPortalV2 profile={state.profile}/><ModernChatPortal profile={state.profile}/><ChatOpenButton/><DirectChatCreator profile={state.profile}/><GroupChatCreator profile={state.profile}/><UnreadChatCounter/><NotificationCenter/></>;
+}
+
+function WelcomeScreen({profile}:{profile:SchoolUser}){
+  return <main className="uk-welcome" aria-label="Добро пожаловать в UK School of Tashkent">
+    <div className="uk-welcome-orb orb-one"/><div className="uk-welcome-orb orb-two"/>
+    <div className="uk-stars">{Array.from({length:18},(_,i)=><i key={i}/>)}</div>
+    <section className="uk-welcome-card">
+      <div className="uk-school-mark"><span>UK</span><i/></div>
+      <div className="uk-welcome-line"><i/><span>ЕДИНАЯ ШКОЛЬНАЯ ПЛАТФОРМА</span><i/></div>
+      <h1><span>Добро пожаловать</span>UK School of Tashkent</h1>
+      <p>Рады снова видеть вас, <strong>{profile.fullName.split(" ")[0]}</strong></p>
+      <div className="uk-welcome-progress"><i/></div>
+      <small>Открываем ваш личный кабинет</small>
+    </section>
+  </main>
 }
 
 function ChatOpenButton(){return <button className="chat-fab" onClick={()=>window.dispatchEvent(new Event("open-school-chat"))}>♬ Сообщения</button>}
