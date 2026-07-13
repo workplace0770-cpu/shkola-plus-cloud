@@ -26,7 +26,7 @@ function WelcomeScreen({profile}:{profile:SchoolUser}){
     <div className="uk-welcome-orb orb-one"/><div className="uk-welcome-orb orb-two"/>
     <div className="uk-stars">{Array.from({length:18},(_,i)=><i key={i}/>)}</div>
     <section className="uk-welcome-card">
-      <div className="uk-school-mark"><span>UK</span><i/></div>
+      <div className="uk-school-mark"><img src="/uk-school-logo.jpg" alt="UK School of Tashkent"/></div>
       <div className="uk-welcome-line"><i/><span>ЕДИНАЯ ШКОЛЬНАЯ ПЛАТФОРМА</span><i/></div>
       <h1><span>Добро пожаловать</span>UK School of Tashkent</h1>
       <p>Рады снова видеть вас, <strong>{profile.fullName.split(" ")[0]}</strong></p>
