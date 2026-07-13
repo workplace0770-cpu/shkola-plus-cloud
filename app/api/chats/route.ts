@@ -51,3 +51,16 @@ export async function POST(r:Request){
   return Response.json({id},{status:201});
  }catch{return chatError()}
 }
+
+export async function DELETE(r:Request){
+ try{
+  await ensureAccountsTable();await ensureChatsTables();const u=await userFromRequest(r);
+  if(!u)return Response.json({error:"Требуется вход"},{status:401});
+  const {chatId}=await r.json() as {chatId?:number},id=Number(chatId);
+  const membership=await env.DB.prepare("SELECT cm.role,c.created_by createdBy FROM chat_members cm JOIN chats c ON c.id=cm.chat_id WHERE cm.chat_id=? AND cm.user_id=?").bind(id,u.id).first<{role:string;createdBy:number}>();
+  if(!membership)return Response.json({error:"Чат не найден"},{status:404});
+  if(u.role!=="admin"&&membership.role!=="owner"&&membership.createdBy!==u.id)return Response.json({error:"Недостаточно прав"},{status:403});
+  await env.DB.batch([env.DB.prepare("DELETE FROM messages WHERE chat_id=?").bind(id),env.DB.prepare("DELETE FROM chat_members WHERE chat_id=?").bind(id),env.DB.prepare("DELETE FROM chats WHERE id=?").bind(id)]);
+  return Response.json({ok:true});
+ }catch{return chatError()}
+}
