@@ -10,7 +10,7 @@ export async function GET(r:Request,context:Context){
   await ensureAccountsTable();await ensureChatsTables();const u=await userFromRequest(r),id=await chatId(context);
   if(!u)return Response.json({error:"Требуется вход"},{status:401});
   if(!id||!await isChatMember(id,u.id))return Response.json({error:"Чат не найден или нет доступа"},{status:403});
-  const messages=(await env.DB.prepare(`SELECT * FROM (SELECT m.id,m.chat_id chatId,m.sender_id senderId,m.body,m.created_at createdAt,u.full_name senderName
+  const messages=(await env.DB.prepare(`SELECT * FROM (SELECT m.id,m.chat_id chatId,m.sender_id senderId,m.body,m.created_at createdAt,m.edited_at editedAt,u.full_name senderName
    FROM messages m JOIN school_users u ON u.id=m.sender_id WHERE m.chat_id=? AND m.deleted_at IS NULL ORDER BY m.id DESC LIMIT 100) ORDER BY id ASC`).bind(id).all()).results;
   await env.DB.prepare("UPDATE chat_members SET last_read_at=? WHERE chat_id=? AND user_id=?").bind(new Date().toISOString(),id,u.id).run();
   return Response.json({messages,currentUserId:u.id});
