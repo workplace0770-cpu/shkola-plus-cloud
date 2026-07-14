@@ -15,8 +15,12 @@ type Student = {id:number;fullName:string;className:string|null};
 type SchoolClass = {id:number;name:string};
 type ListPayload = {error?:string;records?:RecordItem[];students?:Student[];classes?:SchoolClass[]};
 type SummaryPayload = {error?:string;summary?:Summary};
+type ReportSummary = {charged:number;paid:number;pending:number;overdue:number;expenses:number;recordCount:number};
+type Debtor = {studentId:number;studentName:string;className?:string|null;debtCount:number;debtAmount:number;oldestDueDate?:string|null};
+type ReportPayload = {error?:string;month?:string;summary?:ReportSummary;debtors?:Debtor[];classes?:SchoolClass[]};
 
 const emptySummary:Summary={totalIncome:0,totalExpenses:0,totalPending:0,totalPaid:0,totalOverdue:0,countPending:0,countPaid:0,countOverdue:0};
+const emptyReport:ReportSummary={charged:0,paid:0,pending:0,overdue:0,expenses:0,recordCount:0};
 const statusNames:Record<FinanceStatus,string>={pending:"Ожидает",paid:"Оплачено",overdue:"Просрочено",cancelled:"Отменено"};
 const typeNames:Record<string,string>={income:"Доход",expense:"Расход",fee:"Начисление",event_budget:"Бюджет мероприятия",shop:"Магазин"};
 const money=(amount:number)=>new Intl.NumberFormat("ru-RU").format(Number(amount||0))+" ₸";
@@ -46,6 +50,12 @@ export default function FinancePortal({profile}:{profile:SchoolUser}){
   const [loading,setLoading]=useState(false);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
+  const [reportOpen,setReportOpen]=useState(false);
+  const [reportLoading,setReportLoading]=useState(false);
+  const [reportMonth,setReportMonth]=useState(()=>new Date().toISOString().slice(0,7));
+  const [reportClass,setReportClass]=useState("");
+  const [report,setReport]=useState<ReportSummary>(emptyReport);
+  const [debtors,setDebtors]=useState<Debtor[]>([]);
   const canManage=profile.role==="admin";
 
   const visibleRecords=useMemo(()=>{
@@ -66,6 +76,23 @@ export default function FinancePortal({profile}:{profile:SchoolUser}){
       setRecords(list.records||[]);setStudents(list.students||[]);setClasses(list.classes||[]);setSummary(totals.summary||emptySummary);
     }catch(cause){setError(cause instanceof Error?cause.message:"Не удалось загрузить финансовые данные")}
     finally{setLoading(false)}
+  }
+
+  async function loadReport(nextMonth=reportMonth,nextClass=reportClass){
+    setReportLoading(true);setError("");
+    try{
+      const query=new URLSearchParams({month:nextMonth});
+      if(nextClass)query.set("class_id",nextClass);
+      const data=await apiJson<ReportPayload>(await fetch(`/api/finance/report?${query}`));
+      setReport(data.summary||emptyReport);setDebtors(data.debtors||[]);
+      if(data.classes?.length)setClasses(data.classes);
+    }catch(cause){setError(cause instanceof Error?cause.message:"Не удалось загрузить финансовый отчёт")}
+    finally{setReportLoading(false)}
+  }
+
+  function toggleReport(){
+    const next=!reportOpen;setReportOpen(next);
+    if(next)loadReport();
   }
 
   useEffect(()=>{const handler=()=>load(true);window.addEventListener("open-school-finance",handler);return()=>window.removeEventListener("open-school-finance",handler)},[status,type]);
@@ -127,12 +154,38 @@ export default function FinancePortal({profile}:{profile:SchoolUser}){
         <div className="finance-workbar">
           <div className="finance-search"><span>⌕</span><input value={search} onChange={event=>setSearch(event.target.value)} placeholder="Найти ученика, класс или запись"/></div>
           <select value={type} onChange={event=>chooseType(event.target.value)}><option value="">Все операции</option>{Object.entries(typeNames).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
+          {canManage&&<button className={`finance-report-button ${reportOpen?"active":""}`} onClick={toggleReport}>▦ {reportOpen?"Скрыть отчёт":"Отчёты"}</button>}
           {canManage&&<button className="finance-create" onClick={()=>setCreating(value=>!value)}>{creating?"× Закрыть форму":"＋ Новая запись"}</button>}
         </div>
 
         <nav className="finance-tabs">
           {[['','Все'],['pending','Ожидают'],['paid','Оплачено'],['overdue','Просрочено'],['cancelled','Отменено']].map(([value,label])=><button key={value} className={status===value?"active":""} onClick={()=>chooseStatus(value)}>{label}</button>)}
         </nav>
+
+        {canManage&&reportOpen&&<section className="finance-report">
+          <div className="finance-report-head">
+            <div><span>ФИНАНСОВАЯ АНАЛИТИКА</span><h3>Месячный отчёт</h3><p>Начисления, оплаты и задолженности считаются напрямую из D1.</p></div>
+            <div className="finance-report-filters">
+              <label>Месяц<input type="month" value={reportMonth} onChange={event=>{setReportMonth(event.target.value);loadReport(event.target.value,reportClass)}}/></label>
+              <label>Класс<select value={reportClass} onChange={event=>{setReportClass(event.target.value);loadReport(reportMonth,event.target.value)}}><option value="">Все классы</option>{classes.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+              <button onClick={()=>loadReport()} disabled={reportLoading}>{reportLoading?"Считаем…":"Обновить"}</button>
+            </div>
+          </div>
+          <div className="finance-report-cards">
+            <article><span>Начислено</span><strong>{money(report.charged)}</strong><small>{report.recordCount} операций</small></article>
+            <article className="green"><span>Оплачено</span><strong>{money(report.paid)}</strong><small>{report.charged?Math.round(report.paid/report.charged*100):0}% от начислений</small></article>
+            <article className="amber"><span>Ожидается</span><strong>{money(report.pending)}</strong><small>ещё не просрочено</small></article>
+            <article className="red"><span>Просрочено</span><strong>{money(report.overdue)}</strong><small>требует внимания</small></article>
+            <article className="blue"><span>Расходы</span><strong>{money(report.expenses)}</strong><small>за выбранный месяц</small></article>
+          </div>
+          <div className="finance-debtors">
+            <div className="finance-debtors-title"><div><strong>Список должников</strong><span>Неоплаченные начисления на конец выбранного месяца</span></div><b>{debtors.length}</b></div>
+            {debtors.map((debtor,index)=><div className="finance-debtor" key={debtor.studentId}>
+              <i>{index+1}</i><div><strong>{debtor.studentName}</strong><span>{debtor.className||"Класс не указан"} · {debtor.debtCount} начислений</span></div><small>Первый срок: {showDate(debtor.oldestDueDate)}</small><b>{money(debtor.debtAmount)}</b>
+            </div>)}
+            {!reportLoading&&!debtors.length&&<div className="finance-no-debt">✓ Задолженностей за выбранный период нет</div>}
+          </div>
+        </section>}
 
         {creating&&<form className="finance-form" onSubmit={create}>
           <div className="finance-form-title"><div><strong>Новая финансовая запись</strong><span>Укажите назначение и получателя. Повторное начисление система не пропустит.</span></div></div>
