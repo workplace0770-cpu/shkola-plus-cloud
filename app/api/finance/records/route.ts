@@ -45,6 +45,8 @@ export async function POST(request:Request){
   if((studentId!==null&&(!Number.isInteger(studentId)||studentId<1))||(classId!==null&&(!Number.isInteger(classId)||classId<1)))return Response.json({error:"Некорректный ученик или класс"},{status:400});
   if(!validDate(dueDate)||!validDate(requestedPaidAt))return Response.json({error:"Некорректная дата"},{status:400});
   const target=await validateFinanceTargets(studentId,classId);if("error" in target)return Response.json({error:target.error},{status:400});
+  const duplicate=await env.DB.prepare(`SELECT id FROM finance_records WHERE type=? AND lower(trim(title))=lower(trim(?)) AND amount=? AND COALESCE(student_id,0)=COALESCE(?,0) AND COALESCE(class_id,0)=COALESCE(?,0) AND COALESCE(date(due_date),'')=COALESCE(date(?),'') AND status!='cancelled' LIMIT 1`).bind(input.type,title,amount,studentId,classId,dueDate).first();
+  if(duplicate)return Response.json({error:"Похожая запись уже существует. Проверьте список, чтобы не начислить оплату дважды."},{status:409});
   const now=new Date().toISOString(),paidAt=status==="paid"?(requestedPaidAt?new Date(requestedPaidAt).toISOString():now):null,id=crypto.randomUUID();
   await env.DB.prepare("INSERT INTO finance_records(id,type,title,description,amount,currency,status,student_id,class_id,created_by,due_date,paid_at,created_at,updated_at) VALUES(?,?,?,?,?,'KZT',?,?,?,?,?,?,?,?)").bind(id,input.type,title,description,amount,status,studentId,classId,user.id,dueDate?new Date(dueDate).toISOString():null,paidAt,now,now).run();
   return Response.json({ok:true,id},{status:201});
