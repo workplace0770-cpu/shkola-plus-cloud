@@ -56,6 +56,7 @@ export default function FinancePortal({profile}:{profile:SchoolUser}){
   const [reportClass,setReportClass]=useState("");
   const [report,setReport]=useState<ReportSummary>(emptyReport);
   const [debtors,setDebtors]=useState<Debtor[]>([]);
+  const [receipt,setReceipt]=useState<RecordItem|null>(null);
   const canManage=profile.role==="admin";
 
   const visibleRecords=useMemo(()=>{
@@ -97,6 +98,7 @@ export default function FinancePortal({profile}:{profile:SchoolUser}){
 
   useEffect(()=>{const handler=()=>load(true);window.addEventListener("open-school-finance",handler);return()=>window.removeEventListener("open-school-finance",handler)},[status,type]);
   useEffect(()=>{if(!open)return;const close=(event:KeyboardEvent)=>{if(event.key==="Escape")setOpen(false)};window.addEventListener("keydown",close);return()=>window.removeEventListener("keydown",close)},[open]);
+  useEffect(()=>{if(!receipt)return;const close=(event:KeyboardEvent)=>{if(event.key==="Escape")setReceipt(null)};window.addEventListener("keydown",close);return()=>window.removeEventListener("keydown",close)},[receipt]);
 
   async function create(event:FormEvent<HTMLFormElement>){
     event.preventDefault();if(busy)return;setBusy(true);setError("");
@@ -134,6 +136,7 @@ export default function FinancePortal({profile}:{profile:SchoolUser}){
 
   function chooseStatus(value:string){setStatus(value);load(false,value,type)}
   function chooseType(value:string){setType(value);load(false,status,value)}
+  const receiptNumber=(item:RecordItem)=>`UK-${(item.paidAt||item.createdAt).slice(0,10).replaceAll("-","")}-${item.id.slice(0,8).toUpperCase()}`;
 
   return <>
     <button className="finance-fab" onClick={()=>load(true)}>₸ Финансы</button>
@@ -203,7 +206,7 @@ export default function FinancePortal({profile}:{profile:SchoolUser}){
         {error&&<div className="finance-error" role="alert"><strong>Не удалось выполнить действие</strong><span>{error}</span><button onClick={()=>load(false)}>Повторить</button></div>}
 
         <div className="finance-table">
-          <div className="finance-row finance-labels"><span>Назначение</span><span>Операция</span><span>Сумма</span><span>Статус</span><span>Получатель</span><span>Срок</span><span>Оплачено</span>{canManage&&<span>Действия</span>}</div>
+          <div className="finance-row finance-labels"><span>Назначение</span><span>Операция</span><span>Сумма</span><span>Статус</span><span>Получатель</span><span>Срок</span><span>Оплачено</span><span>Документы</span></div>
           {visibleRecords.map(item=><div className="finance-row" key={item.id}>
             <div className="finance-name"><strong>{item.title}</strong><small>{item.description||`Создано ${showDate(item.createdAt)}`}</small></div>
             <span data-label="Операция">{typeNames[item.type]||item.type}</span>
@@ -212,12 +215,34 @@ export default function FinancePortal({profile}:{profile:SchoolUser}){
             <span data-label="Получатель">{item.studentName||item.className||"Администрация"}</span>
             <span data-label="Срок">{showDate(item.dueDate)}</span>
             <span data-label="Оплата">{showDate(item.paidAt)}</span>
-            {canManage&&<div className="finance-actions"><button onClick={()=>edit(item)}>Изменить</button><button onClick={()=>remove(item)}>Удалить</button></div>}
+            <div className="finance-actions">
+              {item.status==="paid"&&<button className="receipt-button" onClick={()=>setReceipt(item)}>Квитанция</button>}
+              {canManage&&<button onClick={()=>edit(item)}>Изменить</button>}
+              {canManage&&<button onClick={()=>remove(item)}>Удалить</button>}
+            </div>
           </div>)}
           {!loading&&!visibleRecords.length&&<div className="finance-empty"><i>₸</i><strong>{search?"Ничего не найдено":"Финансовых записей пока нет"}</strong><span>{search?"Измените запрос или очистите фильтры":canManage?"Создайте первое начисление или расход":"Для вас пока ничего не назначено"}</span></div>}
           {loading&&<div className="finance-empty"><i className="finance-loader"/><strong>Загружаем финансы…</strong></div>}
         </div>
       </section>
+      {receipt&&<div className="receipt-back" onMouseDown={event=>{if(event.target===event.currentTarget)setReceipt(null)}}>
+        <article className="receipt-sheet" aria-label="Квитанция об оплате">
+          <div className="receipt-toolbar"><button onClick={()=>setReceipt(null)}>← Назад</button><button className="receipt-print" onClick={()=>window.print()}>Печать / PDF</button></div>
+          <header className="receipt-header"><img src="/uk-school-logo.jpg" alt="UK School of Tashkent"/><div><span>UK SCHOOL OF TASHKENT</span><h2>Квитанция об оплате</h2><p>Официальное подтверждение внутренней финансовой записи</p></div><b>ОПЛАЧЕНО</b></header>
+          <div className="receipt-number"><span>Номер квитанции</span><strong>{receiptNumber(receipt)}</strong><small>Дата формирования: {new Date().toLocaleDateString("ru-RU")}</small></div>
+          <dl className="receipt-details">
+            <div><dt>Плательщик</dt><dd>{receipt.studentName||"Не указан"}</dd></div>
+            <div><dt>Класс</dt><dd>{receipt.className||"Не указан"}</dd></div>
+            <div><dt>Назначение платежа</dt><dd>{receipt.title}</dd></div>
+            <div><dt>Дата оплаты</dt><dd>{showDate(receipt.paidAt)}</dd></div>
+            <div><dt>Тип операции</dt><dd>{typeNames[receipt.type]||receipt.type}</dd></div>
+            <div><dt>Способ подтверждения</dt><dd>Внутренняя запись школы</dd></div>
+          </dl>
+          {receipt.description&&<div className="receipt-note"><span>Комментарий</span><p>{receipt.description}</p></div>}
+          <div className="receipt-total"><span>Итого оплачено</span><strong>{money(receipt.amount)}</strong><small>Валюта: KZT</small></div>
+          <footer className="receipt-footer"><div><strong>UK School of Tashkent</strong><span>Финансовый отдел</span></div><p>Квитанция сформирована школьной платформой. Подлинность можно проверить по номеру записи в финансовом кабинете.</p></footer>
+        </article>
+      </div>}
     </div>}
   </>;
 }
