@@ -37,6 +37,52 @@ async function apiJson<T extends {error?:string}>(response:Response):Promise<T>{
   return data;
 }
 
+function joinBytes(parts:Uint8Array[]){
+  const size=parts.reduce((total,part)=>total+part.length,0);
+  const result=new Uint8Array(size);let offset=0;
+  for(const part of parts){result.set(part,offset);offset+=part.length}
+  return result;
+}
+
+function jpegAsPdf(jpeg:Uint8Array,width:number,height:number){
+  const encoder=new TextEncoder();
+  const pageWidth=595.28,pageHeight=841.89;
+  const content=`q\n${pageWidth} 0 0 ${pageHeight} 0 0 cm\n/Im0 Do\nQ\n`;
+  const objects:Uint8Array[]=[
+    encoder.encode("<< /Type /Catalog /Pages 2 0 R >>"),
+    encoder.encode("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+    encoder.encode(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>`),
+    joinBytes([encoder.encode(`<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`),jpeg,encoder.encode("\nendstream")]),
+    encoder.encode(`<< /Length ${encoder.encode(content).length} >>\nstream\n${content}endstream`),
+  ];
+  const parts:Uint8Array[]=[encoder.encode("%PDF-1.4\n%UK-SCHOOL\n")];
+  const offsets=[0];let position=parts[0].length;
+  objects.forEach((object,index)=>{
+    offsets.push(position);
+    const bytes=joinBytes([encoder.encode(`${index+1} 0 obj\n`),object,encoder.encode("\nendobj\n")]);
+    parts.push(bytes);position+=bytes.length;
+  });
+  const xref=position;
+  const rows=["xref","0 6","0000000000 65535 f ",...offsets.slice(1).map(value=>`${String(value).padStart(10,"0")} 00000 n `),"trailer","<< /Size 6 /Root 1 0 R >>","startxref",String(xref),"%%EOF",""];
+  parts.push(encoder.encode(rows.join("\n")));
+  return joinBytes(parts);
+}
+
+function loadReceiptLogo(){
+  return new Promise<HTMLImageElement>((resolve,reject)=>{
+    const image=new Image();image.onload=()=>resolve(image);image.onerror=()=>reject(new Error("Не удалось загрузить логотип"));image.src="/uk-school-logo.jpg";
+  });
+}
+
+function drawWrapped(context:CanvasRenderingContext2D,text:string,x:number,y:number,maxWidth:number,lineHeight:number,maxLines=3){
+  const words=String(text||"").split(/\s+/);let line="";let row=0;
+  for(const word of words){
+    const next=line?`${line} ${word}`:word;
+    if(context.measureText(next).width>maxWidth&&line){context.fillText(line,x,y+row*lineHeight);row+=1;line=word;if(row>=maxLines-1)break}else line=next;
+  }
+  if(line&&row<maxLines)context.fillText(line,x,y+row*lineHeight);
+}
+
 export default function FinancePortal({profile}:{profile:SchoolUser}){
   const [open,setOpen]=useState(false);
   const [records,setRecords]=useState<RecordItem[]>([]);
@@ -57,6 +103,7 @@ export default function FinancePortal({profile}:{profile:SchoolUser}){
   const [report,setReport]=useState<ReportSummary>(emptyReport);
   const [debtors,setDebtors]=useState<Debtor[]>([]);
   const [receipt,setReceipt]=useState<RecordItem|null>(null);
+  const [pdfBusy,setPdfBusy]=useState(false);
   const canManage=profile.role==="admin";
 
   const visibleRecords=useMemo(()=>{
@@ -137,6 +184,53 @@ export default function FinancePortal({profile}:{profile:SchoolUser}){
   function chooseStatus(value:string){setStatus(value);load(false,value,type)}
   function chooseType(value:string){setType(value);load(false,status,value)}
   const receiptNumber=(item:RecordItem)=>`UK-${(item.paidAt||item.createdAt).slice(0,10).replaceAll("-","")}-${item.id.slice(0,8).toUpperCase()}`;
+  const receiptReference=(item:RecordItem)=>item.id.replaceAll("-","").slice(-12).toUpperCase();
+
+  async function downloadReceipt(item:RecordItem){
+    if(pdfBusy)return;setPdfBusy(true);setError("");
+    try{
+      const canvas=document.createElement("canvas");canvas.width=1240;canvas.height=1754;
+      const context=canvas.getContext("2d");if(!context)throw new Error("Браузер не поддерживает создание PDF");
+      const navy="#123c62",blue="#1d6697",gold="#b78327",muted="#74879a",line="#dce6ee",green="#087456";
+      const box=(x:number,y:number,w:number,h:number,r:number,fill:string|CanvasGradient,stroke?:string)=>{context.beginPath();context.roundRect(x,y,w,h,r);context.fillStyle=fill;context.fill();if(stroke){context.strokeStyle=stroke;context.lineWidth=2;context.stroke()}};
+      const label=(text:string,x:number,y:number)=>{context.fillStyle=muted;context.font="700 18px Arial, sans-serif";context.fillText(text.toUpperCase(),x,y)};
+      const value=(text:string,x:number,y:number,size=27)=>{context.fillStyle=navy;context.font=`700 ${size}px Arial, sans-serif`;context.fillText(text,x,y)};
+      context.fillStyle="#f3f7fb";context.fillRect(0,0,canvas.width,canvas.height);
+      box(55,45,1130,1664,34,"#ffffff","#d7e2eb");
+      const gradient=context.createLinearGradient(55,45,1185,45);gradient.addColorStop(0,"#79162a");gradient.addColorStop(.38,"#d0a448");gradient.addColorStop(.7,navy);gradient.addColorStop(1,"#79162a");context.fillStyle=gradient;context.fillRect(55,45,1130,12);
+      const logo=await loadReceiptLogo();box(95,100,145,145,26,"#fffaf0","#ead8b1");context.drawImage(logo,108,112,119,119);
+      context.fillStyle=gold;context.font="800 20px Arial, sans-serif";context.letterSpacing="3px";context.fillText("UK SCHOOL OF TASHKENT",275,132);context.letterSpacing="0px";
+      context.fillStyle=navy;context.font="700 49px Georgia, serif";context.fillText("Квитанция об оплате",275,195);
+      context.fillStyle=muted;context.font="22px Arial, sans-serif";context.fillText("Официальное подтверждение проведённой операции",275,232);
+      box(925,125,205,62,31,"#e2f7ef","#bde7d9");context.fillStyle=green;context.font="800 20px Arial, sans-serif";context.fillText("✓  ОПЛАЧЕНО",960,164);
+      context.strokeStyle=line;context.lineWidth=2;context.beginPath();context.moveTo(95,285);context.lineTo(1145,285);context.stroke();
+      box(95,325,660,98,17,"#f5f8fb",line);label("Номер квитанции",120,357);value(receiptNumber(item),120,397,25);
+      box(775,325,370,98,17,"#f5f8fb",line);label("Сформировано",800,357);value(new Date().toLocaleDateString("ru-RU"),800,397,25);
+      const details=[
+        ["Плательщик",item.studentName||"Школа"],["Класс",item.className||"—"],
+        ["Назначение платежа",item.title],["Дата оплаты",showDate(item.paidAt)],
+        ["Тип операции",typeNames[item.type]||item.type],["Способ подтверждения","Внутренняя запись школы"],
+      ];
+      details.forEach(([title,text],index)=>{
+        const column=index%2,row=Math.floor(index/2),x=95+column*525,y=460+row*126;
+        box(x,y,525,126,0,"#ffffff",line);label(title,x+24,y+38);value(String(text),x+24,y+82,24);
+      });
+      box(95,865,1050,135,18,"#f5f8fb",line);label("Комментарий",120,903);context.fillStyle=navy;context.font="24px Arial, sans-serif";drawWrapped(context,item.description||"Оплата зарегистрирована в финансовой системе школы",120,947,990,31,2);
+      const total=context.createLinearGradient(95,0,1145,0);total.addColorStop(0,"#0e2d4b");total.addColorStop(1,blue);box(95,1035,1050,150,22,total);
+      context.fillStyle="#ffffff";context.font="700 21px Arial, sans-serif";context.fillText("Сумма операции",125,1082);context.fillStyle="#bfd2e1";context.font="18px Arial, sans-serif";context.fillText("Безналичный внутренний учёт · KZT",125,1120);
+      context.fillStyle="#ffffff";context.font="700 50px Georgia, serif";context.textAlign="right";context.fillText(money(item.amount),1110,1127);context.textAlign="left";
+      box(95,1220,1050,130,18,"#fbfdff",line);box(120,1247,74,74,20,"#e2f7ef");context.fillStyle=green;context.font="700 38px Arial";context.fillText("✓",139,1298);value("Подлинность подтверждена",220,1272,23);context.fillStyle=muted;context.font="19px Arial";context.fillText(`Контрольный код: ${receiptReference(item)}`,220,1305);
+      context.strokeStyle=line;context.setLineDash([8,7]);context.beginPath();context.moveTo(95,1400);context.lineTo(1145,1400);context.stroke();context.setLineDash([]);
+      value("UK School of Tashkent",95,1452,25);context.fillStyle=muted;context.font="19px Arial";context.fillText("Финансовый отдел · Ташкент",95,1485);
+      context.fillStyle=muted;context.font="18px Arial";drawWrapped(context,"Квитанция подтверждает запись во внутренней финансовой системе школы. Подлинность проверяется по номеру квитанции и контрольному коду.",95,1545,1040,28,3);
+      context.fillStyle="#a7b3bf";context.font="16px Arial";context.textAlign="center";context.fillText("Документ сформирован автоматически · UK School of Tashkent",620,1650);context.textAlign="left";
+      const jpegBlob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error("Не удалось сформировать PDF")),"image/jpeg",.95));
+      const pdf=jpegAsPdf(new Uint8Array(await jpegBlob.arrayBuffer()),canvas.width,canvas.height);
+      const url=URL.createObjectURL(new Blob([pdf],{type:"application/pdf"}));
+      const link=document.createElement("a");link.href=url;link.download=`Квитанция-${receiptNumber(item)}.pdf`;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }catch(cause){setError(cause instanceof Error?cause.message:"Не удалось скачать квитанцию")}
+    finally{setPdfBusy(false)}
+  }
 
   return <>
     <button className="finance-fab" onClick={()=>load(true)}>₸ Финансы</button>
@@ -227,9 +321,20 @@ export default function FinancePortal({profile}:{profile:SchoolUser}){
       </section>
       {receipt&&<div className="receipt-back" onMouseDown={event=>{if(event.target===event.currentTarget)setReceipt(null)}}>
         <article className="receipt-sheet" aria-label="Квитанция об оплате">
-          <div className="receipt-toolbar"><button onClick={()=>setReceipt(null)}>← Назад</button><button className="receipt-print" onClick={()=>window.print()}>Печать / PDF</button></div>
-          <header className="receipt-header"><img src="/uk-school-logo.jpg" alt="UK School of Tashkent"/><div><span>UK SCHOOL OF TASHKENT</span><h2>Квитанция об оплате</h2><p>Официальное подтверждение внутренней финансовой записи</p></div><b>ОПЛАЧЕНО</b></header>
-          <div className="receipt-number"><span>Номер квитанции</span><strong>{receiptNumber(receipt)}</strong><small>Дата формирования: {new Date().toLocaleDateString("ru-RU")}</small></div>
+          <div className="receipt-watermark" aria-hidden="true">UK</div>
+          <div className="receipt-toolbar">
+            <button onClick={()=>setReceipt(null)}>← Вернуться</button>
+            <div><button onClick={()=>navigator.clipboard?.writeText(receiptNumber(receipt))}>Копировать номер</button><button className="receipt-download" disabled={pdfBusy} onClick={()=>downloadReceipt(receipt)}>{pdfBusy?"Создаём PDF…":"↓ Скачать PDF"}</button><button className="receipt-print" onClick={()=>window.print()}>⌁ Печать</button></div>
+          </div>
+          <header className="receipt-header">
+            <div className="receipt-logo"><img src="/uk-school-logo.jpg" alt="UK School of Tashkent"/></div>
+            <div><span>UK SCHOOL OF TASHKENT</span><h2>Квитанция об оплате</h2><p>Официальное подтверждение проведённой операции</p></div>
+            <b><i>✓</i> ОПЛАЧЕНО</b>
+          </header>
+          <div className="receipt-number">
+            <div><span>Номер квитанции</span><strong>{receiptNumber(receipt)}</strong></div>
+            <div><span>Сформировано</span><strong>{new Date().toLocaleDateString("ru-RU")}</strong></div>
+          </div>
           <dl className="receipt-details">
             <div><dt>Плательщик</dt><dd>{receipt.studentName||"Не указан"}</dd></div>
             <div><dt>Класс</dt><dd>{receipt.className||"Не указан"}</dd></div>
@@ -239,8 +344,13 @@ export default function FinancePortal({profile}:{profile:SchoolUser}){
             <div><dt>Способ подтверждения</dt><dd>Внутренняя запись школы</dd></div>
           </dl>
           {receipt.description&&<div className="receipt-note"><span>Комментарий</span><p>{receipt.description}</p></div>}
-          <div className="receipt-total"><span>Итого оплачено</span><strong>{money(receipt.amount)}</strong><small>Валюта: KZT</small></div>
-          <footer className="receipt-footer"><div><strong>UK School of Tashkent</strong><span>Финансовый отдел</span></div><p>Квитанция сформирована школьной платформой. Подлинность можно проверить по номеру записи в финансовом кабинете.</p></footer>
+          <div className="receipt-total"><div><span>Сумма операции</span><small>Безналичный внутренний учёт · KZT</small></div><strong>{money(receipt.amount)}</strong></div>
+          <div className="receipt-verification">
+            <div className="receipt-shield">✓</div>
+            <div><strong>Документ сформирован системой школы</strong><span>Контрольный код: {receiptReference(receipt)}</span></div>
+            <small>Запись защищена идентификатором операции</small>
+          </div>
+          <footer className="receipt-footer"><div><strong>UK School of Tashkent</strong><span>Финансовый отдел · Ташкент</span></div><p>Квитанция подтверждает запись во внутренней финансовой системе школы. Подлинность проверяется по номеру квитанции и контрольному коду.</p></footer>
         </article>
       </div>}
     </div>}
