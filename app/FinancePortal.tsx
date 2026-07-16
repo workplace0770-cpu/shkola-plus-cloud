@@ -137,6 +137,7 @@ export default function FinancePortal({profile}:{profile:SchoolUser}){
   function chooseStatus(value:string){setStatus(value);load(false,value,type)}
   function chooseType(value:string){setType(value);load(false,status,value)}
   const receiptNumber=(item:RecordItem)=>`UK-${(item.paidAt||item.createdAt).slice(0,10).replaceAll("-","")}-${item.id.slice(0,8).toUpperCase()}`;
+  const receiptReference=(item:RecordItem)=>item.id.replaceAll("-","").slice(-12).toUpperCase();
 
   return <>
     <button className="finance-fab" onClick={()=>load(true)}>₸ Финансы</button>
@@ -227,9 +228,20 @@ export default function FinancePortal({profile}:{profile:SchoolUser}){
       </section>
       {receipt&&<div className="receipt-back" onMouseDown={event=>{if(event.target===event.currentTarget)setReceipt(null)}}>
         <article className="receipt-sheet" aria-label="Квитанция об оплате">
-          <div className="receipt-toolbar"><button onClick={()=>setReceipt(null)}>← Назад</button><button className="receipt-print" onClick={()=>window.print()}>Печать / PDF</button></div>
-          <header className="receipt-header"><img src="/uk-school-logo.jpg" alt="UK School of Tashkent"/><div><span>UK SCHOOL OF TASHKENT</span><h2>Квитанция об оплате</h2><p>Официальное подтверждение внутренней финансовой записи</p></div><b>ОПЛАЧЕНО</b></header>
-          <div className="receipt-number"><span>Номер квитанции</span><strong>{receiptNumber(receipt)}</strong><small>Дата формирования: {new Date().toLocaleDateString("ru-RU")}</small></div>
+          <div className="receipt-watermark" aria-hidden="true">UK</div>
+          <div className="receipt-toolbar">
+            <button onClick={()=>setReceipt(null)}>← Вернуться</button>
+            <div><button onClick={()=>navigator.clipboard?.writeText(receiptNumber(receipt))}>Копировать номер</button><button className="receipt-print" onClick={()=>window.print()}>↓ Скачать PDF / печать</button></div>
+          </div>
+          <header className="receipt-header">
+            <div className="receipt-logo"><img src="/uk-school-logo.jpg" alt="UK School of Tashkent"/></div>
+            <div><span>UK SCHOOL OF TASHKENT</span><h2>Квитанция об оплате</h2><p>Официальное подтверждение проведённой операции</p></div>
+            <b><i>✓</i> ОПЛАЧЕНО</b>
+          </header>
+          <div className="receipt-number">
+            <div><span>Номер квитанции</span><strong>{receiptNumber(receipt)}</strong></div>
+            <div><span>Сформировано</span><strong>{new Date().toLocaleDateString("ru-RU")}</strong></div>
+          </div>
           <dl className="receipt-details">
             <div><dt>Плательщик</dt><dd>{receipt.studentName||"Не указан"}</dd></div>
             <div><dt>Класс</dt><dd>{receipt.className||"Не указан"}</dd></div>
@@ -239,8 +251,13 @@ export default function FinancePortal({profile}:{profile:SchoolUser}){
             <div><dt>Способ подтверждения</dt><dd>Внутренняя запись школы</dd></div>
           </dl>
           {receipt.description&&<div className="receipt-note"><span>Комментарий</span><p>{receipt.description}</p></div>}
-          <div className="receipt-total"><span>Итого оплачено</span><strong>{money(receipt.amount)}</strong><small>Валюта: KZT</small></div>
-          <footer className="receipt-footer"><div><strong>UK School of Tashkent</strong><span>Финансовый отдел</span></div><p>Квитанция сформирована школьной платформой. Подлинность можно проверить по номеру записи в финансовом кабинете.</p></footer>
+          <div className="receipt-total"><div><span>Сумма операции</span><small>Безналичный внутренний учёт · KZT</small></div><strong>{money(receipt.amount)}</strong></div>
+          <div className="receipt-verification">
+            <div className="receipt-shield">✓</div>
+            <div><strong>Документ сформирован системой школы</strong><span>Контрольный код: {receiptReference(receipt)}</span></div>
+            <small>Запись защищена идентификатором операции</small>
+          </div>
+          <footer className="receipt-footer"><div><strong>UK School of Tashkent</strong><span>Финансовый отдел · Ташкент</span></div><p>Квитанция подтверждает запись во внутренней финансовой системе школы. Подлинность проверяется по номеру квитанции и контрольному коду.</p></footer>
         </article>
       </div>}
     </div>}
