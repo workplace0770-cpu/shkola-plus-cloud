@@ -7,8 +7,9 @@ export type LivingSchoolAtmosphere =
   | "celebrating";
 
 export type LivingSchoolSnapshot = {
-  activeStudents: number;
-  activeTeachers: number;
+  activeStudentsToday: number;
+  activeTeachersToday: number;
+  positiveGradesToday: number;
   positiveEventsToday: number;
   weeklyAchievements: number;
   schoolEnergy: number;
@@ -17,10 +18,11 @@ export type LivingSchoolSnapshot = {
   knowledgeTreeGoldenFlowers: number;
   knowledgeTreeProgress: number;
   atmosphere: LivingSchoolAtmosphere;
+  generatedAt: string;
+  dataMode: "live" | "partial";
 };
 
 export type SchoolEvent = {
   id: string;
   title: string;
 };
-

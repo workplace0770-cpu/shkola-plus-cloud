@@ -31,6 +31,10 @@ export default function LivingSchoolScene({ snapshot }: { snapshot: LivingSchool
   const [intro, setIntro] = useState(false);
   const [eventLocked, setEventLocked] = useState(false);
   const eventLockRef = useRef(false);
+  const generatedLabel = useMemo(() => {
+    const date = new Date(snapshot.generatedAt);
+    return Number.isNaN(date.getTime()) ? "сейчас" : date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  }, [snapshot.generatedAt]);
 
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -116,7 +120,7 @@ export default function LivingSchoolScene({ snapshot }: { snapshot: LivingSchool
         <button onClick={startEvent} disabled={eventLocked}>
           <span aria-hidden="true">✦</span>{eventLocked ? "Событие идёт…" : "Запустить школьное событие"}
         </button>
-        <small>Демонстрационный режим · данные не сохраняются</small>
+        <small>{snapshot.dataMode === "live" ? "Агрегированные данные школы" : "Частичные агрегированные данные"} · обновлено {generatedLabel}</small>
       </div>
 
       {event && <div className={styles.toast} role="status"><span>✦</span><div><small>СОБЫТИЕ В ЖИВОЙ ШКОЛЕ</small><strong>{event.title}</strong></div></div>}
@@ -173,7 +177,7 @@ function DetailsModal({ type, snapshot, onClose }: { type: Exclude<DetailPanel, 
       {tree ? <>
         <div className={styles.metrics}><span><small>Уровень</small><b>{snapshot.knowledgeTreeLevel}</b></span><span><small>Листья знаний</small><b>{snapshot.knowledgeTreeLeaves.toLocaleString("ru-RU")}</b></span><span><small>Золотые цветы</small><b>{snapshot.knowledgeTreeGoldenFlowers}</b></span></div>
         <div className={styles.progressText}><span>До следующего уровня</span><b>{snapshot.knowledgeTreeProgress}%</b></div><div className={styles.progress}><i style={{ width: `${snapshot.knowledgeTreeProgress}%` }}/></div>
-      </> : <div className={styles.metrics}><span><small>Активных учеников</small><b>{snapshot.activeStudents}</b></span><span><small>Активных учителей</small><b>{snapshot.activeTeachers}</b></span><span><small>Хороших событий</small><b>{snapshot.positiveEventsToday}</b></span><span><small>Достижений за неделю</small><b>{snapshot.weeklyAchievements}</b></span><span><small>Энергия школы</small><b>{snapshot.schoolEnergy}%</b></span></div>}
+      </> : <div className={styles.metrics}><span><small>Активных учеников сегодня</small><b>{snapshot.activeStudentsToday}</b></span><span><small>Активных учителей сегодня</small><b>{snapshot.activeTeachersToday}</b></span><span><small>Положительных оценок</small><b>{snapshot.positiveGradesToday}</b></span><span><small>Хороших событий</small><b>{snapshot.positiveEventsToday}</b></span><span><small>Достижений за неделю</small><b>{snapshot.weeklyAchievements}</b></span><span><small>Энергия школы</small><b>{snapshot.schoolEnergy}%</b></span></div>}
     </section>
   </div>;
 }
