@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { ensureAccountsTable, userFromRequest } from "../../../../db/accounts";
 import { derivedStatusSql, ensureFinanceTables, financeError, financeScope, financeStatuses, financeTypes, validateFinanceTargets, type FinanceStatus, type FinanceType } from "../../../../db/finance";
+import { recordAudit } from "../../../../db/audit";
 
 type CreateInput={type?:FinanceType;title?:string;description?:string;amount?:number|string;currency?:string;status?:FinanceStatus;studentId?:number|string|null;classId?:number|string|null;dueDate?:string|null;paidAt?:string|null};
 const allowedType=(value:unknown):value is FinanceType=>financeTypes.includes(value as FinanceType);
@@ -49,6 +50,7 @@ export async function POST(request:Request){
   if(duplicate)return Response.json({error:"Похожая запись уже существует. Проверьте список, чтобы не начислить оплату дважды."},{status:409});
   const now=new Date().toISOString(),paidAt=status==="paid"?(requestedPaidAt?new Date(requestedPaidAt).toISOString():now):null,id=crypto.randomUUID();
   await env.DB.prepare("INSERT INTO finance_records(id,type,title,description,amount,currency,status,student_id,class_id,created_by,due_date,paid_at,created_at,updated_at) VALUES(?,?,?,?,?,'KZT',?,?,?,?,?,?,?,?)").bind(id,input.type,title,description,amount,status,studentId,classId,user.id,dueDate?new Date(dueDate).toISOString():null,paidAt,now,now).run();
+  await recordAudit(user,{action:"finance.created",entityType:"finance",entityId:id,summary:`Создана финансовая запись: ${title}`,metadata:{type:input.type,amount,status,studentId,classId}});
   return Response.json({ok:true,id},{status:201});
  }catch{return financeError()}
 }
