@@ -35,7 +35,7 @@ export async function GET(request: Request) {
     if (!currentUser) return json({ error: "Требуется авторизация" }, 401);
 
     const tableRows = await env.DB.prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('school_users','grades','messages','assessment_attempts','user_achievements','audit_logs')",
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('school_users','grades','messages','assessment_attempts','user_achievements','audit_logs','user_presence')",
     ).all<{ name: string }>();
     const tables = new Set(tableRows.results.map(row => row.name));
     const { todayStart, tomorrowStart, weekStart } = tashkentRanges();
@@ -84,7 +84,18 @@ export async function GET(request: Request) {
 
     let activeStudentsToday = 0;
     let activeTeachersToday = 0;
-    if (tables.has("school_users") && activitySources.length) {
+    if (tables.has("school_users") && tables.has("user_presence")) {
+      const activity = await env.DB.prepare(`
+        SELECT
+          COALESCE(SUM(CASE WHEN u.role='student' THEN 1 ELSE 0 END),0) students,
+          COALESCE(SUM(CASE WHEN u.role='teacher' THEN 1 ELSE 0 END),0) teachers
+        FROM school_users u
+        JOIN user_presence p ON p.user_id=u.id
+        WHERE p.last_seen_at>=? AND p.last_seen_at<?
+      `).bind(todayStart, tomorrowStart).first<{ students: number; teachers: number }>();
+      activeStudentsToday = Math.max(0, Number(activity?.students ?? 0));
+      activeTeachersToday = Math.max(0, Number(activity?.teachers ?? 0));
+    } else if (tables.has("school_users") && activitySources.length) {
       const activity = await env.DB.prepare(`
         SELECT
           COALESCE(SUM(CASE WHEN u.role='student' THEN 1 ELSE 0 END),0) students,
@@ -132,7 +143,7 @@ export async function GET(request: Request) {
       knowledgeTreeProgress,
       atmosphere,
       generatedAt: new Date().toISOString(),
-      dataMode: "partial",
+      dataMode: tables.has("user_presence") ? "live" : "partial",
     };
 
     return json(snapshot);
