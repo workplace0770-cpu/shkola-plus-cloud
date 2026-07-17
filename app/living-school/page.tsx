@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import LivingSchoolScene from "./LivingSchoolScene";
+import PresenceHeartbeat from "../PresenceHeartbeat";
 import type { LivingSchoolSnapshot } from "./living-school-types";
 import styles from "./living-school.module.css";
 
@@ -53,6 +54,6 @@ export default function LivingSchoolPage() {
     return () => controller.abort();
   }, []);
 
-  if (checking || !snapshot) return <main className={styles.accessCheck}><span>UK</span><p>Открываем Живую школу…</p></main>;
-  return <LivingSchoolScene snapshot={snapshot}/>;
+  if (checking || !snapshot) return <><PresenceHeartbeat/><main className={styles.accessCheck}><span>UK</span><p>Открываем Живую школу…</p></main></>;
+  return <><PresenceHeartbeat/><LivingSchoolScene snapshot={snapshot}/></>;
 }
