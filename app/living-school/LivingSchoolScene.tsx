@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { LivingSchoolSnapshot, SchoolEvent, TimeOfDay } from "./living-school-types";
 import { livingSchoolDemoEvents } from "./living-school-demo-data";
@@ -30,6 +30,7 @@ export default function LivingSchoolScene({ snapshot }: { snapshot: LivingSchool
   const [event, setEvent] = useState<SchoolEvent | null>(null);
   const [intro, setIntro] = useState(false);
   const [eventLocked, setEventLocked] = useState(false);
+  const eventLockRef = useRef(false);
 
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -54,6 +55,7 @@ export default function LivingSchoolScene({ snapshot }: { snapshot: LivingSchool
     const timer = window.setTimeout(() => {
       setEvent(null);
       setEventLocked(false);
+      eventLockRef.current = false;
     }, 4500);
     return () => window.clearTimeout(timer);
   }, [event]);
@@ -72,7 +74,8 @@ export default function LivingSchoolScene({ snapshot }: { snapshot: LivingSchool
   }, [event, snapshot.atmosphere]);
 
   function startEvent() {
-    if (eventLocked) return;
+    if (eventLockRef.current || eventLocked) return;
+    eventLockRef.current = true;
     setEventLocked(true);
     const next = livingSchoolDemoEvents[Math.floor(Math.random() * livingSchoolDemoEvents.length)];
     setEvent(next);
