@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { ensureAccountsTable, userFromRequest } from "../../../../../db/accounts";
 import { ensureFinanceTables, financeError, financeStatuses, validateFinanceTargets, type FinanceStatus } from "../../../../../db/finance";
+import { recordAudit } from "../../../../../db/audit";
 
 type Context={params:Promise<{id:string}>};
 type UpdateInput={title?:string;description?:string|null;amount?:number|string;status?:FinanceStatus;studentId?:number|string|null;classId?:number|string|null;dueDate?:string|null;paidAt?:string|null};
@@ -27,10 +28,10 @@ export async function PATCH(request:Request,context:Context){
   if(has(input,"paidAt")){const paid=clean(input.paidAt,40)||null;if(!validDate(paid))return Response.json({error:"Некорректная дата оплаты"},{status:400});fields.push("paid_at=?");values.push(paid?new Date(paid).toISOString():null)}
   else if(has(input,"status")){fields.push("paid_at=?");values.push(status==="paid"?(existing.paidAt??new Date().toISOString()):null)}
   if(!fields.length)return Response.json({error:"Нет изменений"},{status:400});fields.push("updated_at=?");values.push(new Date().toISOString());values.push(id);
-  await env.DB.prepare(`UPDATE finance_records SET ${fields.join(",")} WHERE id=?`).bind(...values).run();return Response.json({ok:true});
+  await env.DB.prepare(`UPDATE finance_records SET ${fields.join(",")} WHERE id=?`).bind(...values).run();await recordAudit(access.user,{action:"finance.updated",entityType:"finance",entityId:id,summary:"Изменена финансовая запись",metadata:{status,studentId,classId}});return Response.json({ok:true});
  }catch{return financeError()}
 }
 
 export async function DELETE(request:Request,context:Context){
- try{const access=await admin(request);if("response" in access)return access.response;const id=await recordId(context),result=await env.DB.prepare("DELETE FROM finance_records WHERE id=?").bind(id).run();if(!result.meta.changes)return Response.json({error:"Запись не найдена"},{status:404});return Response.json({ok:true})}catch{return financeError()}
+ try{const access=await admin(request);if("response" in access)return access.response;const id=await recordId(context),existing=await env.DB.prepare("SELECT title,amount,status FROM finance_records WHERE id=?").bind(id).first<{title:string;amount:number;status:string}>(),result=await env.DB.prepare("DELETE FROM finance_records WHERE id=?").bind(id).run();if(!result.meta.changes)return Response.json({error:"Запись не найдена"},{status:404});await recordAudit(access.user,{action:"finance.deleted",entityType:"finance",entityId:id,summary:`Удалена финансовая запись: ${existing?.title??id}`,metadata:{amount:existing?.amount??null,status:existing?.status??null}});return Response.json({ok:true})}catch{return financeError()}
 }
