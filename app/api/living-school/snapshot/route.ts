@@ -1,5 +1,9 @@
 import { env } from "cloudflare:workers";
 import { userFromRequest } from "../../../../db/accounts";
+import {
+  PRESENCE_ALLOWED_ROLES,
+  PRESENCE_ONLINE_WINDOW_MS,
+} from "../../../../db/presence";
 import type { LivingSchoolAtmosphere, LivingSchoolSnapshot } from "../../../living-school/living-school-types";
 
 const json = (body: unknown, status = 200) =>
@@ -7,7 +11,7 @@ const json = (body: unknown, status = 200) =>
 
 type Binding = string | number;
 
-function tashkentRanges(now = new Date()) {
+function tashkentRanges(now: Date) {
   const offset = 5 * 60 * 60 * 1000;
   const local = new Date(now.getTime() + offset);
   const localMidnight = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate());
@@ -33,12 +37,19 @@ export async function GET(request: Request) {
   try {
     const currentUser = await userFromRequest(request);
     if (!currentUser) return json({ error: "Требуется авторизация" }, 401);
+    if (!PRESENCE_ALLOWED_ROLES.has(currentUser.role)) {
+      return json({ error: "Недостаточно прав" }, 403);
+    }
 
     const tableRows = await env.DB.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('school_users','grades','messages','assessment_attempts','user_achievements','audit_logs','user_presence')",
     ).all<{ name: string }>();
     const tables = new Set(tableRows.results.map(row => row.name));
-    const { todayStart, tomorrowStart, weekStart } = tashkentRanges();
+    const now = new Date();
+    const { todayStart, tomorrowStart, weekStart } = tashkentRanges(now);
+    const onlineStart = new Date(
+      now.getTime() - PRESENCE_ONLINE_WINDOW_MS,
+    ).toISOString();
 
     const positiveGradesToday = tables.has("grades")
       ? await count("SELECT COUNT(*) total FROM grades WHERE value>=4 AND created_at>=? AND created_at<?", [todayStart, tomorrowStart])
@@ -84,17 +95,35 @@ export async function GET(request: Request) {
 
     let activeStudentsToday = 0;
     let activeTeachersToday = 0;
+    let onlineStudents = 0;
+    let onlineTeachers = 0;
     if (tables.has("school_users") && tables.has("user_presence")) {
       const activity = await env.DB.prepare(`
         SELECT
-          COALESCE(SUM(CASE WHEN u.role='student' THEN 1 ELSE 0 END),0) students,
-          COALESCE(SUM(CASE WHEN u.role='teacher' THEN 1 ELSE 0 END),0) teachers
+          COUNT(CASE WHEN u.role='student' AND p.last_seen_at>=? THEN 1 END) onlineStudents,
+          COUNT(CASE WHEN u.role='teacher' AND p.last_seen_at>=? THEN 1 END) onlineTeachers,
+          COUNT(CASE WHEN u.role='student' AND p.last_seen_at>=? AND p.last_seen_at<? THEN 1 END) studentsToday,
+          COUNT(CASE WHEN u.role='teacher' AND p.last_seen_at>=? AND p.last_seen_at<? THEN 1 END) teachersToday
         FROM school_users u
         JOIN user_presence p ON p.user_id=u.id
-        WHERE p.last_seen_at>=? AND p.last_seen_at<?
-      `).bind(todayStart, tomorrowStart).first<{ students: number; teachers: number }>();
-      activeStudentsToday = Math.max(0, Number(activity?.students ?? 0));
-      activeTeachersToday = Math.max(0, Number(activity?.teachers ?? 0));
+        WHERE u.role IN ('student','teacher')
+      `).bind(
+        onlineStart,
+        onlineStart,
+        todayStart,
+        tomorrowStart,
+        todayStart,
+        tomorrowStart,
+      ).first<{
+        onlineStudents: number;
+        onlineTeachers: number;
+        studentsToday: number;
+        teachersToday: number;
+      }>();
+      onlineStudents = Math.max(0, Number(activity?.onlineStudents ?? 0));
+      onlineTeachers = Math.max(0, Number(activity?.onlineTeachers ?? 0));
+      activeStudentsToday = Math.max(0, Number(activity?.studentsToday ?? 0));
+      activeTeachersToday = Math.max(0, Number(activity?.teachersToday ?? 0));
     } else if (tables.has("school_users") && activitySources.length) {
       const activity = await env.DB.prepare(`
         SELECT
@@ -105,6 +134,8 @@ export async function GET(request: Request) {
       `).bind(...activityBindings).first<{ students: number; teachers: number }>();
       activeStudentsToday = Math.max(0, Number(activity?.students ?? 0));
       activeTeachersToday = Math.max(0, Number(activity?.teachers ?? 0));
+      onlineStudents = activeStudentsToday;
+      onlineTeachers = activeTeachersToday;
     }
 
     const roleTotals = tables.has("school_users")
@@ -115,7 +146,7 @@ export async function GET(request: Request) {
           FROM school_users
         `).first<{ students: number; teachers: number }>()
       : null;
-    const activePopulation = activeStudentsToday + activeTeachersToday;
+    const activePopulation = onlineStudents + onlineTeachers;
     const totalPopulation = Number(roleTotals?.students ?? 0) + Number(roleTotals?.teachers ?? 0);
     const positiveEventsToday = positiveGradesToday + achievementsToday + perfectAttemptsToday;
     const knowledgeTreeLeaves = positiveGradesAll + completedAttempts + achievementsAll;
